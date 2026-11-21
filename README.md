@@ -11,14 +11,18 @@ The laboratory has sequenced an unidentified protein-coding region from each bac
 Use Bash to copy the FASTA files from the outlet directories into a single working directory, adding the outlet name to each sequence header.
 
 #### copy the FASTA files from the outlet directories into a single working directory.
+```bash
 ssh -X gi26912@bp1-login.acrc.bris.ac.uk
 cd $WORK
 mkdir Bristol_Bacteria_Meat_Mystery
 scp "D:/Bioinformatics_MSc/Introduction to Bioinformatics/Mystery Meat Report/sequences_by_outlet.zip" gi26912@bp1-login.acrc.bris.ac.uk:/user/work/gi26912/Bristol_Bacteria_Meat_Mystery/
 cd $WORK/Bristol_Bacteria_Meat_Mystery
 unzip sequences_by_outlet.zip
+```
 #### inspect one of the fasta files to check the format.
+```bash
 head sequences_by_outlet/outlet_01/seq013.fasta
+```
 >seq013
 TTGGCCGGTCAAGTTGTCCAATATGGAAGACATCGTAAACGTAGAAATTACGCGAGAATTTCAGAAGTAT
 TAGAATTACCAAACTTAATAGAAATTCAAACTAAGTCTTACGAGTGGTTCCTAAGAGAAGGTTTAATCGA
@@ -30,10 +34,16 @@ TCACCATCCGTTTATTTCAATGAAAAAATCGACAAAAATGGTCGTGAAAACTATGATGCAACCATTATTC
 CAAACCGTGGGGCATGGTTAGAATATGAAACAGATGCTAAAGATGTTGTATACGTACGGATTGATAGGAC
 ACGTAAACTACCATTAACCGTATTGTTACGTGCTCTAGGTTTCTCAAGCGACCAAGAAATTGTTGACCTG
 #### combine all of the 100 sequences to all_sequences.fasta and add the outlet name to each sequence header.
+```bash
 ./catSEQUENCE.sh
+```
 #### check result by checking the number of lines in all_sequences.fasta.
+```bash
 wc -l all_sequences.fasta
+```
 #### copy the FASTA files from the working directory to local computer for further analysis.
+```bash
 scp gi26912@bp1-login.acrc.bris.ac.uk:/user/work/gi26912/Bristol_Bacteria_Meat_Mystery/all_sequences.fasta "D:/Bioinformatics_MSc/Introduction to Bioinformatics/Mystery Meat Report/" 
+```
 
 ### 2. Identify sequence groups
