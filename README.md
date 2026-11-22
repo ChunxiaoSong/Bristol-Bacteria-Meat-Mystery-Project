@@ -10,6 +10,7 @@ Determine what biological information can be recovered from these sequences.
 ## Pipeline:
 ### 1. Data preparation
 Use Bash to copy the FASTA files from the outlet directories into a single working directory, adding the outlet name to each sequence header.
+The project (catSEQUENCE.sh) and files (input and output) can be found in directory "Data preparation".
 
 #### copy the FASTA files from the outlet directories into a single working directory.
 ```bash
