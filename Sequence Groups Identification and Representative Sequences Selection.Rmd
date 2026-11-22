@@ -1,0 +1,413 @@
+---
+title: "Sequence Groups Identification and Representative Sequences Selection"
+author: "Chunxiao Song"
+date: "2026-11-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Scenario
+
+There have been a number of cases of severe food poisoning in Bristol city centre. The victims have predominantly been university students, and all have reported eating late-night fast-food meat products.
+The case has been referred to the UK Health Security Agency (UKHSA) for investigation. The Environmental Health team at the local authority has collected meat samples from several food outlets, and bacteria have been isolated from these samples. (This is a simulated exercise and does not describe a real outbreak. The outlets are fictional.)
+
+The laboratory has sequenced an unidentified protein-coding region from each bacterial isolate. Reads have already been quality-trimmed, and we have been provided with the resulting FASTA files, organised in one directory per food outlet. They have not yet been annotated.
+
+As a bioinformatician assisting with the investigation, our task is to determine what biological information can be recovered from these sequences. In the prior step, we have combined all 100 sequences from 8 outlets into a single fasta file (all_sequences.fasta), and added the outlet name to each sequence header. In this project, we will investigate the relationships among the DNA sequences and determine how many distinct sequence groups are represented.
+
+## 1. Installing the required packages
+
+For this practical, we will use treesurgeon, an R package developed by Joe Keating to support phylogenetic analyses and evolutionary research, as well as Biostrings and msa for reading DNA strings and conducting multiple sequence alignments.
+
+treesurgeon depends on several established R packages for evolutionary biology. These packages provide tools for working with DNA sequences, calculating evolutionary distances, estimating phylogenetic trees, and analysing evolutionary patterns:
+
+ape: tools for analysing DNA sequences, calculating evolutionary distances, manipulating and rooting phylogenetic trees, and plotting phylogenies.
+phangorn: methods for phylogenetic inference, including maximum-likelihood estimation, nucleotide substitution models, and bootstrap assessment of phylogenetic support.
+phytools: tools for phylogenetic comparative biology, including ancestral-state estimation, evolutionary visualisation, and analyses of trait evolution.
+For further information about treesurgeon, including its source code, documentation and dependencies, see the GitHub repository.
+
+First, We will install the treesurgeon package directly from GitHub using the remotes package.
+
+```{r, warning=FALSE, message=FALSE}
+if (!require(remotes)) {
+  install.packages("remotes")
+}
+
+remotes::install_github("evo-palaeo/treesurgeon")
+library(treesurgeon)
+```
+
+Next, we will install the Biostrings and msa packages using the BiocManager package.
+
+```{r, warning=FALSE, message=FALSE}
+if (!require(BiocManager)) {
+  install.packages("BiocManager")
+}
+
+BiocManager::install("msa")
+library(msa)
+
+BiocManager::install("Biocstrings")
+library(Biostrings)
+```
+
+There are some other required packages.
+
+```{r}
+library(ggplot2)
+if (!require(cluster)) {
+  install.packages("cluster")
+}
+library(cluster)
+```
+
+
+Installing treesurgeon will automatically install its dependendencies, and loading the package will also load its dependencies.
+
+## 2. Loading, aligning and inspecting the data
+
+The original data are quality-trimmed reads, while the reads are not aligned and the length of each sequence is different. Therefore, we will align the sequences for further analysis. An alignment is a set of DNA sequences in which homologous nucleotide positions have been placed in the same columns. Each row represents a sequence, and each column represents a nucleotide position.
+
+```{r}
+## loading and inspecting original data
+sequences <- readDNAStringSet("D:/Bioinformatics_MSc/Introduction to Bioinformatics/Mystery Meat Report/all_sequences.fasta")
+sequences
+
+## aligning the sequences
+bacteria_alignment <- msa(sequences, method = "ClustalW", order = "input")
+aligned_dna <- msaConvert(
+  bacteria_alignment,
+  type = "ape::DNAbin"
+)
+aligned_dna
+
+## visualizing the alignment
+image(
+  aligned_dna, 
+  show.labels = TRUE,
+  show.nucs = FALSE,
+  cex = 0.4,
+  col = c(hcl.colors(n = 4, palette = "zissou"), "grey", "white")
+)
+```
+
+## 3. Calculating pairwise sequence distances
+
+### 3.1 Calculating the raw sequence distance
+
+One way to quantify differences between DNA sequences is to calculate the proportion of nucleotide positions at which two sequences differ. This is known as the raw sequence distance, or p-distance. For example, if two sequences differ at 50 out of 1,000 aligned positions, their raw distance is:
+p=501000=0.05
+
+This means that 5% of their aligned positions differ. However, it does not necessarily mean that only 5% of sites have experienced an evolutionary substitution. A site may have changed more than once during the evolutionary history of the sequences. We can calculate the pairwise raw distances using dist.dna() from the ape package.
+
+```{r}
+raw.distances <- dist.dna(
+  aligned_dna,
+  model = "raw"
+)
+
+## inspecting the distance matrix
+as.matrix(raw.distances) [1:3, 1:3]
+```
+
+### 3.2 Correcting distances using the Jukes–Cantor model
+
+Observed sequence differences are not a complete measure of evolutionary divergence because a substitution can make two previously different nucleotides identical. To account for substitutions that are not directly observed, we can use a nucleotide substitution model.
+
+The Jukes–Cantor model (JC69) is one of the simplest nucleotide substitution models. It assumes that:
+
+All four nucleotide states occur at equal equilibrium frequencies.
+Every type of nucleotide substitution occurs at the same rate.
+Substitutions at different sites evolve independently.
+
+```{r}
+jc.distances <- dist.dna(
+  aligned_dna,
+  model = "JC69"
+)
+
+## inspecting the distance matrix
+as.matrix(jc.distances) [1:3, 1:3]
+```
+
+## 4. Performing Principal Coordinate Analysis (PCoA)
+
+PCoA, is a dimensionality-reduction method that represents samples as points in a lower-dimensional space using a matrix of pairwise distances between them.
+
+Goal: To make patterns of similarity and dissimilarity between samples easier to visualise, while preserving the original pairwise distances as faithfully as possible.
+
+Interpretation: Each point represents a sample, and the distances between points approximate the original pairwise distances. Samples plotted close together are more similar under the chosen distance measure, while samples further apart are more dissimilar. The axes do not usually correspond to specific biological variables. PCoA calculates eigenvalues, which indicate how much of the distance structure is represented along each axis. The percentages in the axis labels show the proportion of the total positive eigenvalue sum represented by each axis. Because we are plotting only two dimensions, some of the original pairwise distances may not be preserved exactly.
+
+```{r}
+pcoa_result <- cmdscale(
+  jc.distances,
+  k = 10,
+  eig = TRUE
+)
+
+## Visualizing results and colour points by food outlet
+# Extract PCoA coordinates
+pcoa_df <- as.data.frame(pcoa_result$points)
+
+# Name the first ten coordinate axes
+colnames(pcoa_df) <- paste0("PCoA", seq_len(ncol(pcoa_df)))
+
+# Calculate percentages from positive eigenvalues
+eig <- pcoa_result$eig
+variance <- 100 * eig / sum(eig[eig > 0])
+```
+
+## 5. Plotting the PCoA results
+
+```{r}
+# Plot PCoA1 against PCoA2
+p1 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(
+    x = paste0("PCoA1 (", round(variance[1], 1), "%)"),
+    y = paste0("PCoA2 (", round(variance[2], 1), "%)"),
+    title = "PCoA: Axes 1 and 2"
+  ) +
+  theme_classic()
+
+# Plot PCoA3 against PCoA4
+p2 <- ggplot(pcoa_df, aes(x = PCoA3, y = PCoA4)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(
+    x = paste0("PCoA3 (", round(variance[3], 1), "%)"),
+    y = paste0("PCoA4 (", round(variance[4], 1), "%)"),
+    title = "PCoA: Axes 3 and 4"
+  ) +
+  theme_classic()
+
+p1
+p2
+```
+
+Higher percents means this PCoA axe is more important. Together, PCoA1 - PCoA4 represent 94.5% of the total positive-eigenvalue sum (64.6% + 13.7% + 9.9% + 6.3%).
+
+```{r}
+## plotting the PCoA, colouring the points according to the food outlets information
+# extracting food outlet information from sequence names
+pcoa_df$Sequence <- rownames(pcoa_df)
+pcoa_df$outlets <- sub(
+  "_seq.*", "",
+  pcoa_df$Sequence
+)
+
+# colouring points by food outlet
+ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, colour = outlets)) +
+  geom_point(size = 3, alpha = 0.5) +
+  labs(
+    x = paste0("PCoA1 (", round(variance[1], 1), "%)"),
+    y = paste0("PCoA2 (", round(variance[2], 1), "%)"),
+    title = "PCoA of Bacteria Sequences",
+    colour = "colour = Food outlets"
+  ) +
+  theme_classic()
+```
+
+## 6. k-means clustering
+
+In this part, we will use k-means clustering to identify groups of sequences, assess how well separated these groups are, and compare the resulting clusters with the known food outlets information.
+
+K-means is an unsupervised clustering algorithm that divides samples into a specified number of clusters, (k), based on their positions in a multidimensional space. The algorithm aims to minimise the variation within clusters, so samples in the same cluster tend to lie close together.
+
+Here, we will apply k-means to the first two PCoA axes calculated in Exercise 1. This means that clustering is based on the two-dimensional representation of the JC69 distances, rather than the full distance matrix.
+
+### 6.1 applying k-means clustering
+
+K-means requires us to specify the number of clusters, (k), in advance. Let’s start by dividing the sequences into four clusters according to the outcome of PCoA analysis.
+
+```{r}
+# extract all 10 PCoA axes for clustering
+pcoa_coords <- pcoa_df[, paste0("PCoA", 1:10)]
+
+# perform k-means clustering
+km <- kmeans(
+  pcoa_coords,
+  centers = 4,
+  nstart = 25
+)
+
+# store the cluster assignments
+pcoa_df$Cluster <- factor(km$cluster)
+```
+
+### 6.2 choosing the number of clusters
+
+So far, we have arbitrarily chosen three clusters without assessing whether this is appropriate. Next, we will use the silhouette analysis to assess the clustering and help determine an appropriate number of groups. The silhouette width measures how well each sample fits within its assigned cluster compared with other clusters. Values range from −1 to 1:
+
+Values close to 1 indicate that a sample is much closer to its own cluster than to neighbouring clusters.
+
+Values close to 0 indicate that a sample lies near the boundary between clusters.
+
+Negative values suggest that a sample may be closer to another cluster than to its assigned cluster.
+
+We can calculate the average silhouette width for different values of (k) and compare the results.
+
+```{r}
+## calculating silhouette widths for solutions containing between two and seven clusters
+## There are 8 food outlets, which will be separated to two to seven clusters if there are at least 2 outlets in one cluster.
+
+# calculate Euclidean distances in the PCoA space
+pcoa_dist <- dist(pcoa_coords)
+
+# test different numbers of clusters
+k_values <- 2:7
+mean_silhouette <- numeric(length(k_values))
+
+for (i in seq_along(k_values)) {
+
+  km_test <- kmeans(
+    pcoa_coords,
+    centers = k_values[i],
+    nstart = 25
+  )
+
+  sil <- silhouette(km_test$cluster, pcoa_dist)
+
+  mean_silhouette[i] <- mean(sil[, "sil_width"])
+}
+
+# plot the results
+plot(
+  k_values,
+  mean_silhouette,
+  type = "b",
+  pch = 19,
+  xlab = "Number of clusters (k)",
+  ylab = "Mean silhouette width",
+  main = "Choosing the Number of Clusters"
+)
+
+```
+
+Obviously, the value of mean silhouette width is highest when k equals to 5.
+
+```{r}
+# select the number of clusters with the highest mean silhouette width
+optimal_k <- k_values[which.max(mean_silhouette)]
+
+# rerun k-means using the optimal number of clusters
+set.seed(123)
+
+km_optimal <- kmeans(
+  pcoa_coords,
+  centers = optimal_k,
+  nstart = 25
+)
+
+# Store cluster assignments
+pcoa_df$Clusters <- factor(km_optimal$cluster)
+```
+
+A higher mean silhouette width generally indicates better-separated clusters. However, it should be treated as a guide rather than definitive proof that a particular number of clusters is biologically correct.
+
+### 6.3 plotting the clusters on the first two PCoA axes
+
+```{r}
+# points colured by kmeans cluster
+ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, colour = Clusters)) +
+  geom_point(size = 3, alpha = 0.9) +
+  labs(
+    x = paste0("PCoA1 (", round(variance[1], 1), "%)"),
+    y = paste0("PCoA2 (", round(variance[2], 1), "%)"),
+    title = "K-means Clustering of Bacteria Meat",
+    colour = "Cluster"
+  ) +
+  theme_classic()
+```
+
+### 6.4 replotting the PCoA coloured with food outlets information to compare the distribution
+
+```{r}
+ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, colour = outlets)) +
+  geom_point(size = 3, alpha = 0.5) +
+  labs(
+    x = paste0("PCoA1 (", round(variance[1], 1), "%)"),
+    y = paste0("PCoA2 (", round(variance[2], 1), "%)"),
+    title = "K-means Clustering of Bacteria Meat",
+    colour = "colour = Food outlets"
+  ) +
+  theme_classic()
+```
+
+The bacterial DNA sequences are divided into five clusters, in any which consisting samples from more than one food outlet, suggesting that there are multiple genetically similar sequences groups across different food outlets. On the other hand, sequences collected from the same outlet are distributed across different clusters, suggesting that individual outlets may contain multiple bacterial sequence groups.  However, there are also some distinct characteristics. For example, DNA sequences that are grouped into cluster four are mainly from outlet 1 and outlet 2. Also, DNA sequences of cluster 1 and cluster 5 are genetically close. For further analysis, we will conduct sequence identification and build phylogenetic trees using representative sequences of each group.
+
+## 7. selecting representative sequences
+
+In this part, we will select one representative sequence from each group for further detailed analysis. 
+Since we have calculated the pairwise distances of the sequences and determined appropriate clustering groups, it would be reasonable to choose the sequence with the smallest distance to others in its cluster, which means it is genetically closest with other sequences in its cluster.
+
+First, assign sequences to their clusters.
+
+```{r}
+# check the group information
+table(pcoa_df$Clusters)
+
+# add clustering information to distance matrix
+Clusters <- pcoa_df$Clusters
+jc.matrix <- as.matrix(jc.distances)
+names(Clusters) <- rownames(pcoa_df)
+stopifnot(setequal(names(Clusters), rownames(jc.matrix)))
+Clusters <- Clusters[rownames(jc.matrix)]
+```
+
+Next, select the sequence with the smallest distance to others in each cluster.
+
+```{r}
+representatives <- sapply(
+  split(names(Clusters), Clusters),
+  function(seq_names) {
+    cluster_distances <- jc.matrix[seq_names, seq_names, drop = FALSE]
+    mean_distances <- rowMeans(cluster_distances)
+    names(which.min(mean_distances))
+  }
+)
+
+# display the selected representative sequences
+representatives
+
+```
+The selected representative sequences are:
+
+Cluster 1: outlet_05_seq033
+Cluster 2: outlet_02_seq053
+Cluster 3: outlet_08_seq092
+Cluster 4: outlet_01_seq068
+Cluster 5: outlet_05_seq074
+
+Finally, extract the representative sequences from original fasta file and save them into a new fasta file called representative_sequences.fasta.
+
+```{r}
+# read the original FASTA file
+fasta <- readLines("D:/Bioinformatics_MSc/Introduction to Bioinformatics/Mystery Meat Report/all_sequences.fasta")
+
+# identify FASTA headers
+header_positions <- grep("^>", fasta)
+
+# extract sequence names
+sequence_names <- sub("^>", "", fasta[header_positions])
+
+# find the five representative sequences
+selected <- which(sequence_names %in% representatives)
+
+# extract the complete FASTA records
+records <- lapply(selected, function(i) {
+  start <- header_positions[i]
+  end <- if (i < length(header_positions)) {
+    header_positions[i + 1] - 1
+  } else {
+    length(fasta)
+  }
+  fasta[start:end]
+})
+
+# save the selected sequences to a new fasta file
+writeLines(unlist(records), "D:/Bioinformatics_MSc/Introduction to Bioinformatics/Mystery Meat Report/representative_sequences.fasta")
+```
+
