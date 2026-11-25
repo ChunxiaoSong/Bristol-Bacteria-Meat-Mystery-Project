@@ -1,0 +1,83 @@
+---
+title: "Multiple Sequence Alignment"
+author: "Chunxiao Song"
+date: "2026-11-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this project, we will construct a multiple sequence alignment containing our representative sequences, selected reference sequences and outgroup.
+
+## 1. Loading the required packages
+
+For this project, we will use Biostrings package to read and write fasta files and msa package to do Multiple Sequence Alignment. 
+
+```{r, warning=FALSE, message=FALSE}
+library(msa)
+library(Biostrings)
+library(phangorn)
+```
+
+
+## 2. Loading the sequence data
+
+Our representative sequences, selected reference sequences and outgroup are stored in different folders, and the file format are fasta and faa. We will combine them together to facilitate the further phylogenetic analysis.
+
+```{r}
+# Looading all protein fasta files from the three folders
+representative <- readAAStringSet(
+  "../ORFs prediction and translation/translated.fas")
+
+reference <- readAAStringSet(
+  "../Bacterial taxa investigation/all_reference_sequences.fasta")
+
+outgroup <- readAAStringSet(
+  "../Bacterial taxa investigation/outgroup.faa")
+
+# Combing the files
+all_sequences <- c(representative, reference, outgroup)
+
+# Check the number of sequences in the combined file
+length(all_sequences)
+```
+
+## 3. Performing Multiple Sequence Alignment
+
+```{r}
+bacteria_alignment <- msa(all_sequences, method = "ClustalW", order = "input")
+aligned_bacteria <- as(bacteria_alignment, "AAStringSet")
+aligned_bacteria
+```
+
+## 4. Visualizing the alignment quality
+
+```{r}
+bacteria_alignment <- as.matrix(bacteria_alignment)
+
+# Convert to phyDat format
+bacteria_alignment <- phyDat(
+  bacteria_alignment,
+  type = "AA"
+)
+bacteria_alignment
+
+# Visualise the alignment
+image(
+  bacteria_alignment, 
+  show.labels = TRUE,
+  show.nucs = FALSE,
+  cex = 0.4,
+  col = c(hcl.colors(n = 4, palette = "zissou"), "grey", "white")
+)
+```
+
+
+## 5. Saving the aligned sequences
+
+```{r}
+saveRDS(bacteria_alignment, file = "bacteria_alignment.rds")
+```
+
