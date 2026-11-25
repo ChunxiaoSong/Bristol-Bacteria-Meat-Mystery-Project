@@ -20,7 +20,7 @@ As a bioinformatician assisting with the investigation, our task is to determine
 
 ## 1. Installing the required packages
 
-For this practical, we will use treesurgeon, an R package developed by Joe Keating to support phylogenetic analyses and evolutionary research, as well as Biostrings and msa for reading DNA strings and conducting multiple sequence alignments.
+For this project, we will use treesurgeon, an R package developed by Joe Keating to support phylogenetic analyses and evolutionary research, as well as Biostrings and msa for reading DNA strings and conducting multiple sequence alignments.
 
 treesurgeon depends on several established R packages for evolutionary biology. These packages provide tools for working with DNA sequences, calculating evolutionary distances, estimating phylogenetic trees, and analysing evolutionary patterns:
 
